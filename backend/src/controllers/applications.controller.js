@@ -45,6 +45,7 @@ function createApplication(req, res) {
   res.status(201).json(newApplication);
 }
 
+
 // GET /api/applications?status=recue
 // Liste TOUTES les candidatures (vue "recruteur"), avec le titre de
 // l'offre associée pour éviter au front de faire une requête en plus.

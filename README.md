@@ -104,8 +104,7 @@ Ouvrez ensuite **http://localhost:5173** dans votre navigateur.
 Comptes de démonstration : `candidat@recrute.test` et
 `recruteur@recrute.test`, mot de passe `demo123`.
 
-## Pistes d'amélioration (pour aller plus loin)
 
-- Upload de CV (PDF) plutôt qu'un simple message de motivation.
-- Pagination de la liste des offres.
-- Notifications email lors d'un changement de statut.
+
+
+
