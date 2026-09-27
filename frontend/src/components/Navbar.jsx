@@ -28,7 +28,6 @@ export default function Navbar() {
                 Offres
               </NavLink>
             </li>}
-            {user ? <li><button className="nav-account" onClick={logout}>Quitter <span>{user.name.split(" ")[0]}</span></button></li> : <li><NavLink to="/connexion" className={({ isActive }) => (isActive ? "active" : "")}>Se connecter</NavLink></li>}
             {user?.role === "recruiter" && <li>
               <NavLink
                 to="/offres/nouvelle"
@@ -47,6 +46,13 @@ export default function Navbar() {
             </li>}
             {user && <li><NavLink to="/notifications" className={({ isActive }) => (isActive ? "active" : "")}>Notifications</NavLink></li>}
             {user && <li><NavLink to="/profil" className={({ isActive }) => (isActive ? "active" : "")}>Mon profil</NavLink></li>}
+            {user ? (
+              <li className="nav-logout">
+                <button className="nav-account" onClick={logout}>Quitter <span>{user.name.split(" ")[0]}</span></button>
+              </li>
+            ) : (
+              <li><NavLink to="/connexion" className={({ isActive }) => (isActive ? "active" : "")}>Se connecter</NavLink></li>
+            )}
           </ul>
         </nav>
       </div>
