@@ -11,116 +11,151 @@
 
 const db = require("../db");
 
-// GET /api/jobs?q=motclé&contract=CDI
-// Liste toutes les offres, avec une recherche optionnelle par mot-clé.
-// La recherche porte sur le titre, l'entreprise, la description et les
-// compétences (skills), ce qui couvre la majorité des cas d'usage.
 function listJobs(req, res) {
-  const { q, contract } = req.query;
-
-  let sql = "SELECT * FROM jobs";
-  const conditions = [];
+  const { q, search, contract, company, sector, city, region, education, experience, salary_min, salary_max, remote, since } = req.query;
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+  const sortColumns = { date: "jobs.created_at", created_at: "jobs.created_at", deadline: "jobs.deadline", salary: "jobs.salary_min", title: "jobs.title" };
+  const sortColumn = sortColumns[req.query.sort] || "jobs.created_at";
+  const direction = String(req.query.order || "desc").toLowerCase() === "asc" ? "ASC" : "DESC";
+  const conditions = ["jobs.status = 'published'", "(jobs.deadline IS NULL OR date(jobs.deadline) >= date('now'))"];
   const params = {};
+  const keyword = String(search || q || "").trim();
 
-  if (q && q.trim() !== "") {
-    conditions.push(
-      "(title LIKE @kw OR company LIKE @kw OR description LIKE @kw OR skills LIKE @kw)"
-    );
-    params.kw = `%${q.trim()}%`;
+  if (keyword) {
+    conditions.push("(jobs.title LIKE @keyword OR jobs.company LIKE @keyword OR jobs.description LIKE @keyword OR jobs.missions LIKE @keyword OR jobs.skills LIKE @keyword)");
+    params.keyword = `%${keyword}%`;
+  }
+  for (const [key, value] of Object.entries({ contract, company, sector, city, region, education })) {
+    if (value && String(value).trim()) {
+      if (key === "city") {
+        conditions.push("(jobs.city LIKE @city OR jobs.location LIKE @city)");
+        params.city = `%${String(value).trim()}%`;
+        continue;
+      }
+      const column = `jobs.${{ education: "education_level" }[key] || key}`;
+      conditions.push(`${column} LIKE @${key}`);
+      params[key] = `%${String(value).trim()}%`;
+    }
+  }
+  if (salary_min !== undefined && Number.isFinite(Number(salary_min))) {
+    conditions.push("(jobs.salary_max >= @salary_min OR (jobs.salary_max IS NULL AND jobs.salary_min >= @salary_min))");
+    params.salary_min = Number(salary_min);
+  }
+  if (salary_max !== undefined && Number.isFinite(Number(salary_max))) {
+    conditions.push("(jobs.salary_min <= @salary_max OR (jobs.salary_min IS NULL AND jobs.salary_max <= @salary_max))");
+    params.salary_max = Number(salary_max);
+  }
+  if (experience !== undefined && Number.isFinite(Number(experience))) {
+    conditions.push("jobs.min_experience <= @experience");
+    params.experience = Number(experience);
+  }
+  if (remote === "true" || remote === "1") conditions.push("jobs.remote = 1");
+  if (since && !Number.isNaN(Date.parse(since))) {
+    conditions.push("jobs.created_at >= @since");
+    params.since = new Date(since).toISOString();
   }
 
-  if (contract && contract.trim() !== "") {
-    conditions.push("contract = @contract");
-    params.contract = contract.trim();
-  }
-
-  if (conditions.length > 0) {
-    sql += " WHERE " + conditions.join(" AND ");
-  }
-  sql += " ORDER BY created_at DESC";
-
-  const jobs = db.prepare(sql).all(params);
-  res.json(jobs);
+  const where = conditions.join(" AND ");
+  const total = db.prepare(`SELECT COUNT(*) AS total FROM jobs WHERE ${where}`).get(params).total;
+  const jobs = db.prepare(`SELECT jobs.*, recruiter_profiles.logo_url AS company_logo,
+      (SELECT COUNT(*) FROM applications WHERE applications.job_id = jobs.id) AS applications_count
+    FROM jobs LEFT JOIN recruiter_profiles ON recruiter_profiles.user_id = jobs.recruiter_id WHERE ${where}
+    ORDER BY ${req.query.sort === "relevance" && keyword ? "CASE WHEN jobs.title LIKE @keyword THEN 0 WHEN jobs.company LIKE @keyword THEN 1 ELSE 2 END, " : ""}${sortColumn} ${direction}, jobs.id DESC LIMIT @limit OFFSET @offset`)
+    .all({ ...params, limit, offset: (page - 1) * limit });
+  res.json({ current_page: page, per_page: limit, total, last_page: Math.max(1, Math.ceil(total / limit)), data: jobs });
 }
 
-// GET /api/jobs/:id
 function getJob(req, res) {
-  const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(req.params.id);
-  if (!job) {
+  const job = db.prepare(`SELECT jobs.*, recruiter_profiles.logo_url AS company_logo,
+    (SELECT COUNT(*) FROM applications WHERE applications.job_id = jobs.id) AS applications_count
+    FROM jobs LEFT JOIN recruiter_profiles ON recruiter_profiles.user_id = jobs.recruiter_id WHERE jobs.id = ?`).get(req.params.id);
+  const expired = job?.deadline && job.deadline.slice(0, 10) < new Date().toISOString().slice(0, 10);
+  if (!job || ((job.status !== "published" || expired) && job.recruiter_id !== req.user?.id)) {
     return res.status(404).json({ error: "Offre introuvable." });
   }
   res.json(job);
 }
 
-// POST /api/jobs
 function createJob(req, res) {
-  const { title, company, location, contract, salary, description, skills } = req.body;
-
-  // Validation minimale mais utile : on refuse les champs essentiels manquants
-  if (!title || !company || !location || !description) {
-    return res.status(400).json({
-      error: "Champs requis manquants : title, company, location, description.",
-    });
+  const fields = ["title", "company", "location", "description"];
+  if (fields.some((field) => !String(req.body[field] || "").trim())) {
+    return res.status(400).json({ error: "Champs requis manquants : title, company, location, description." });
   }
 
-  const result = db
-    .prepare(
-      `INSERT INTO jobs (title, company, location, contract, salary, description, skills, recruiter_id)
-       VALUES (@title, @company, @location, @contract, @salary, @description, @skills, @recruiter_id)`
-    )
-    .run({
-      title,
-      company,
-      location,
-      contract: contract || "CDI",
-      salary: salary || "",
-      description,
-      skills: skills || "",
-      recruiter_id: req.user.id,
-    });
-
-  const newJob = db.prepare("SELECT * FROM jobs WHERE id = ?").get(result.lastInsertRowid);
-  res.status(201).json(newJob);
+  const data = { ...req.body };
+  const result = db.prepare(`INSERT INTO jobs (
+    title, company, location, contract, salary, description, skills, recruiter_id,
+    missions, min_experience, required_degree, education_level, openings, deadline,
+    status, city, region, remote, salary_min, salary_max, sector
+  ) VALUES (
+    @title, @company, @location, @contract, @salary, @description, @skills, @recruiter_id,
+    @missions, @min_experience, @required_degree, @education_level, @openings, @deadline,
+    @status, @city, @region, @remote, @salary_min, @salary_max, @sector
+  )`).run({
+    title: data.title.trim(), company: data.company.trim(), location: data.location.trim(),
+    contract: data.contract || "CDI", salary: data.salary || "", description: data.description.trim(),
+    skills: data.skills || "", recruiter_id: req.user.id, missions: data.missions || "",
+    min_experience: Number(data.min_experience) || 0, required_degree: data.required_degree || "",
+    education_level: data.education_level || "", openings: Math.max(1, Number(data.openings) || 1),
+    deadline: data.deadline || null, status: data.status === "draft" ? "draft" : "published",
+    city: data.city || "", region: data.region || "", remote: data.remote ? 1 : 0,
+    salary_min: Number.isFinite(Number(data.salary_min)) && data.salary_min !== "" ? Number(data.salary_min) : null,
+    salary_max: Number.isFinite(Number(data.salary_max)) && data.salary_max !== "" ? Number(data.salary_max) : null,
+    sector: data.sector || "",
+  });
+  res.status(201).json(db.prepare("SELECT * FROM jobs WHERE id = ?").get(result.lastInsertRowid));
 }
 
-// PUT /api/jobs/:id
+function recruiterJob(req, res) {
+  const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(req.params.id);
+  if (!job) return { error: res.status(404).json({ error: "Offre introuvable." }) };
+  if (job.recruiter_id !== req.user.id) return { error: res.status(403).json({ error: "Cette offre ne vous appartient pas." }) };
+  return { job };
+}
+
 function updateJob(req, res) {
-  const existing = db.prepare("SELECT * FROM jobs WHERE id = ?").get(req.params.id);
-  if (!existing) {
-    return res.status(404).json({ error: "Offre introuvable." });
+  const { job, error } = recruiterJob(req, res);
+  if (error) return;
+  if (req.body.status && !["draft", "published", "unpublished", "archived"].includes(req.body.status)) {
+    return res.status(400).json({ error: "Statut d'offre invalide." });
   }
-
-  // On fusionne les champs envoyés avec les valeurs existantes,
-  // pour permettre une mise à jour partielle (PATCH-like).
-  const updated = { ...existing, ...req.body, id: existing.id };
-
-  db.prepare(
-    `UPDATE jobs SET
-       title = @title,
-       company = @company,
-       location = @location,
-       contract = @contract,
-       salary = @salary,
-       description = @description,
-       skills = @skills
-     WHERE id = @id`
-  ).run(updated);
-
-  const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(existing.id);
-  res.json(job);
+  const updated = { ...job, ...req.body, updated_at: new Date().toISOString() };
+  const columns = ["title", "company", "location", "contract", "salary", "description", "skills", "missions", "min_experience", "required_degree", "education_level", "openings", "deadline", "status", "city", "region", "remote", "salary_min", "salary_max", "sector", "updated_at"];
+  db.prepare(`UPDATE jobs SET ${columns.map((column) => `${column} = @${column}`).join(", ")} WHERE id = @id`)
+    .run({ ...updated, remote: updated.remote ? 1 : 0, id: job.id });
+  res.json(db.prepare("SELECT * FROM jobs WHERE id = ?").get(job.id));
 }
 
-// DELETE /api/jobs/:id
 function deleteJob(req, res) {
-  const existing = db.prepare("SELECT * FROM jobs WHERE id = ?").get(req.params.id);
-  if (!existing) {
-    return res.status(404).json({ error: "Offre introuvable." });
-  }
-
-  // Grâce à "ON DELETE CASCADE" dans le schéma, les candidatures
-  // liées à cette offre sont supprimées automatiquement.
-  db.prepare("DELETE FROM jobs WHERE id = ?").run(existing.id);
+  const { job, error } = recruiterJob(req, res);
+  if (error) return;
+  db.prepare("DELETE FROM jobs WHERE id = ?").run(job.id);
   res.status(204).send();
 }
 
-module.exports = { listJobs, getJob, createJob, updateJob, deleteJob };
+function setJobStatus(status) {
+  return (req, res) => {
+    const { job, error } = recruiterJob(req, res);
+    if (error) return;
+    db.prepare("UPDATE jobs SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, job.id);
+    res.json(db.prepare("SELECT * FROM jobs WHERE id = ?").get(job.id));
+  };
+}
+
+function duplicateJob(req, res) {
+  const { job, error } = recruiterJob(req, res);
+  if (error) return;
+  const result = db.prepare(`INSERT INTO jobs (
+    title, company, location, contract, salary, description, skills, recruiter_id, missions,
+    min_experience, required_degree, education_level, openings, deadline, status, city, region,
+    remote, salary_min, salary_max, sector
+  ) VALUES (
+    @title, @company, @location, @contract, @salary, @description, @skills, @recruiter_id, @missions,
+    @min_experience, @required_degree, @education_level, @openings, @deadline, 'draft', @city, @region,
+    @remote, @salary_min, @salary_max, @sector
+  )`).run({ ...job, title: `${job.title} (copie)`, recruiter_id: req.user.id });
+  res.status(201).json(db.prepare("SELECT * FROM jobs WHERE id = ?").get(result.lastInsertRowid));
+}
+
+module.exports = { listJobs, getJob, createJob, updateJob, deleteJob, duplicateJob, publishJob: setJobStatus("published"), unpublishJob: setJobStatus("unpublished"), archiveJob: setJobStatus("archived") };

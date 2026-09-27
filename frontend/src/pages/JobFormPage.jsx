@@ -10,6 +10,19 @@ const EMPTY_JOB = {
   salary: "",
   description: "",
   skills: "",
+  missions: "",
+  city: "",
+  region: "",
+  sector: "",
+  min_experience: 0,
+  required_degree: "",
+  education_level: "",
+  openings: 1,
+  deadline: "",
+  remote: false,
+  salary_min: "",
+  salary_max: "",
+  status: "published",
 };
 
 // Cette page sert à la fois pour CRÉER une offre (route /offres/nouvelle)
@@ -121,6 +134,33 @@ export default function JobFormPage() {
                 onChange={(e) => handleChange("salary", e.target.value)}
               />
             </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-field"><label htmlFor="city">Ville</label><input id="city" value={job.city || ""} onChange={(e) => handleChange("city", e.target.value)} /></div>
+            <div className="form-field"><label htmlFor="region">Région</label><input id="region" value={job.region || ""} onChange={(e) => handleChange("region", e.target.value)} /></div>
+          </div>
+          <div className="form-row">
+            <div className="form-field"><label htmlFor="sector">Secteur</label><input id="sector" value={job.sector || ""} onChange={(e) => handleChange("sector", e.target.value)} /></div>
+            <div className="form-field"><label htmlFor="openings">Nombre de postes</label><input id="openings" type="number" min="1" value={job.openings || 1} onChange={(e) => handleChange("openings", e.target.value)} /></div>
+          </div>
+          <div className="form-row">
+            <div className="form-field"><label htmlFor="min_experience">Expérience minimale (années)</label><input id="min_experience" type="number" min="0" step="0.5" value={job.min_experience || 0} onChange={(e) => handleChange("min_experience", e.target.value)} /></div>
+            <div className="form-field"><label htmlFor="education_level">Niveau d’étude</label><input id="education_level" value={job.education_level || ""} onChange={(e) => handleChange("education_level", e.target.value)} /></div>
+          </div>
+          <div className="form-row">
+            <div className="form-field"><label htmlFor="required_degree">Diplôme requis</label><input id="required_degree" value={job.required_degree || ""} onChange={(e) => handleChange("required_degree", e.target.value)} /></div>
+            <div className="form-field"><label htmlFor="deadline">Date limite</label><input id="deadline" type="date" value={job.deadline || ""} onChange={(e) => handleChange("deadline", e.target.value)} /></div>
+          </div>
+          <div className="form-row salary-range">
+            <div className="form-field"><label htmlFor="salary_min">Salaire minimum (Ar)</label><input id="salary_min" type="number" min="0" value={job.salary_min || ""} onChange={(e) => handleChange("salary_min", e.target.value)} /></div>
+            <div className="form-field"><label htmlFor="salary_max">Salaire maximum (Ar)</label><input id="salary_max" type="number" min="0" value={job.salary_max || ""} onChange={(e) => handleChange("salary_max", e.target.value)} /></div>
+          </div>
+          <label className="filter-toggle form-toggle"><input type="checkbox" checked={Boolean(job.remote)} onChange={(e) => handleChange("remote", e.target.checked)} /> Télétravail possible</label>
+
+          <div className="form-field">
+            <label htmlFor="missions">Missions principales</label>
+            <textarea id="missions" rows={4} value={job.missions || ""} onChange={(e) => handleChange("missions", e.target.value)} />
           </div>
 
           <div className="form-field">

@@ -35,16 +35,23 @@ export function register(data) {
   return request("/auth/register", { method: "POST", body: JSON.stringify(data) });
 }
 
+export function refreshSession() { return request("/auth/refresh", { method: "POST" }); }
+export function changePassword(data) {
+  return request("/auth/change-password", { method: "POST", body: JSON.stringify(data) });
+}
+export function deactivateAccount() { return request("/auth/deactivate", { method: "POST" }); }
+
 export function fetchMyApplications() {
   return request("/applications/mine");
 }
 
 // --------------------- Offres d'emploi ---------------------
 
-export function fetchJobs({ q = "", contract = "" } = {}) {
+export function fetchJobs(filters = {}) {
   const params = new URLSearchParams();
-  if (q) params.set("q", q);
-  if (contract) params.set("contract", contract);
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== "" && value !== null && value !== undefined) params.set(key, value);
+  });
   const query = params.toString();
   return request(`/jobs${query ? `?${query}` : ""}`);
 }
@@ -65,6 +72,14 @@ export function deleteJob(id) {
   return request(`/jobs/${id}`, { method: "DELETE" });
 }
 
+export function updateJobStatus(id, action) {
+  return request(`/jobs/${id}/${action}`, { method: "PATCH" });
+}
+
+export function duplicateJob(id) {
+  return request(`/jobs/${id}/duplicate`, { method: "POST" });
+}
+
 // --------------------- Candidatures ---------------------
 
 export function fetchApplicationsForJob(jobId) {
@@ -78,18 +93,39 @@ export function applyToJob(jobId, data) {
   });
 }
 
-export function fetchAllApplications({ status = "" } = {}) {
-  const query = status ? `?status=${status}` : "";
+export function fetchAllApplications(filters = {}) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== "" && value !== null && value !== undefined) params.set(key, value);
+  });
+  const query = params.toString() ? `?${params}` : "";
   return request(`/applications${query}`);
 }
 
-export function updateApplicationStatus(id, status) {
+export function updateApplicationStatus(id, status, comment = "") {
   return request(`/applications/${id}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, comment }),
   });
 }
 
 export function deleteApplication(id) {
   return request(`/applications/${id}`, { method: "DELETE" });
 }
+
+export function fetchApplicationHistory(id) { return request(`/applications/${id}/history`); }
+export function updateApplicationNote(id, note) {
+  return request(`/applications/${id}/note`, { method: "PATCH", body: JSON.stringify({ note }) });
+}
+export function withdrawApplication(id) { return request(`/applications/${id}/withdraw`, { method: "PATCH" }); }
+export function fetchRecruiterStats() { return request("/applications/stats"); }
+export function fetchProfile() { return request("/account/profile"); }
+export function updateProfile(profile) {
+  return request("/account/profile", { method: "PUT", body: JSON.stringify(profile) });
+}
+export function fetchCandidateDashboard() { return request("/account/candidate-dashboard"); }
+export function fetchNotifications() { return request("/account/notifications"); }
+export function markAllNotificationsRead() { return request("/account/notifications/read-all", { method: "PATCH" }); }
+export function fetchSavedJobs() { return request("/account/saved-jobs"); }
+export function saveJob(id) { return request(`/account/saved-jobs/${id}`, { method: "POST" }); }
+export function unsaveJob(id) { return request(`/account/saved-jobs/${id}`, { method: "DELETE" }); }

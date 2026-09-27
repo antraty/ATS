@@ -44,22 +44,16 @@ ats-project/
 
 ## Fonctionnalités
 
-- **CRUD des offres d'emploi** : création, consultation, modification, suppression.
-- **Candidatures** : un candidat postule via un formulaire sur la page de l'offre ;
-  chaque candidature est liée à une offre (`job_id`) et contient les informations
-  du candidat (nom, email, message de motivation).
-- **Statuts de candidature** : `recue`, `en_cours`, `acceptee`, `refusee`.
-  Le tableau de bord recruteur (`/recrutement`) affiche un pipeline en 4 colonnes
-  et permet de changer le statut d'une candidature via un menu déroulant.
-- **Recherche d'offres par mots-clés** : la barre de recherche sur la page
-  d'accueil interroge le titre, l'entreprise, la description et les compétences,
-  avec un filtre additionnel par type de contrat.
-- **Authentification** : inscription et connexion avec token signé, profils
-  séparés, compte démo recruteur et compte démo candidat.
-- **Espace candidat** : candidature avec identité du compte et suivi de ses
-  statuts dans `/mes-candidatures`.
-- **Espace recruteur** : publication d'offres et pipeline des candidatures
-  protégé par rôle.
+- **Authentification** : inscription candidat/recruteur, connexion, JWT HS256, renouvellement du token, changement de mot de passe et désactivation du compte. Les anciens jetons signés restent valides jusqu'à expiration.
+- **Profils** : informations professionnelles candidat, compétences, formations/expériences structurées en JSON, liens CV/portfolio ; profil entreprise avec secteur, site, logo et coordonnées.
+- **Offres** : CRUD, brouillon/publication/dépublication/archivage/duplication, missions, critères d'expérience et diplôme, localisation détaillée, salaire numérique, télétravail, date limite et nombre de postes.
+- **Recherche** : recherche textuelle et filtres combinables par ville, région, entreprise, secteur, contrat, niveau d'études, expérience, salaire, télétravail et date ; tri par date, pertinence, salaire, intitulé ou échéance ; pagination configurable (`page`, `limit`).
+- **Candidatures** : candidature unique par offre, lien CV et lettre, retrait par le candidat, notes internes recruteur, recherche/filtrage, historique horodaté et workflow complet : `recue`, `cv_consulte`, `analyse`, `preselectionnee`, `entretien_rh`, `test_technique`, `entretien_final`, `offre_envoyee`, `acceptee`, `refusee`, `retiree`, `archivee`.
+- **Tableaux de bord** : compteurs recruteur et candidat, recherche candidat, filtres statut, offres favorites, historique des étapes et notifications en application.
+- **Sécurité de données** : routes rôle-protégées, vérification de propriété des offres/candidatures, contrôle des comptes désactivés et index SQLite.
+- **Documentation** : spécification OpenAPI disponible sur `/api/openapi.json`.
+
+Les photos, CV et logos sont actuellement stockés comme URL/liens : aucun stockage/téléversement de fichier n'est configuré. Les notifications sont internes à l'application ; l'envoi d'e-mails, la réinitialisation de mot de passe par e-mail et les notifications de nouvelles offres nécessitent un fournisseur SMTP ou transactionnel. L'inscription publique ne permet pas de créer un administrateur ; aucun écran/rôle administrateur n'est livré.
 
 ## Lancer le projet en local
 
@@ -90,15 +84,30 @@ Ouvrez ensuite **http://localhost:5173** dans votre navigateur.
 
 | Méthode | Route                              | Description                             |
 |---------|-------------------------------------|------------------------------------------|
-| GET     | `/api/jobs?q=react&contract=CDI`    | Liste + recherche + filtre des offres    |
+| GET     | `/api/jobs?search=react&city=Antananarivo&contract=CDI&page=1&limit=20&sort=date&order=desc` | Recherche filtrée et paginée |
 | GET     | `/api/jobs/:id`                     | Détail d'une offre                       |
 | POST    | `/api/jobs`                         | Créer une offre                          |
 | PUT     | `/api/jobs/:id`                     | Modifier une offre                       |
 | DELETE  | `/api/jobs/:id`                     | Supprimer une offre (+ ses candidatures) |
+| PATCH   | `/api/jobs/:id/publish`             | Publier une offre                        |
+| PATCH   | `/api/jobs/:id/unpublish`           | Dépublier une offre                      |
+| PATCH   | `/api/jobs/:id/archive`             | Archiver une offre                       |
+| POST    | `/api/jobs/:id/duplicate`            | Dupliquer en brouillon                   |
 | GET     | `/api/jobs/:id/applications`        | Candidatures d'une offre                 |
 | POST    | `/api/jobs/:id/applications`        | Postuler à une offre                     |
-| GET     | `/api/applications?status=recue`    | Toutes les candidatures (+ filtre statut)|
-| PATCH   | `/api/applications/:id/status`      | Changer le statut d'une candidature      |
+| GET     | `/api/applications?status=recue&search=nom&page=1&limit=20` | Candidatures recruteur filtrées |
+| GET     | `/api/applications/:id/history`     | Historique d'une candidature             |
+| PATCH   | `/api/applications/:id/status`      | Changer le statut et notifier             |
+| PATCH   | `/api/applications/:id/note`        | Modifier une note interne                |
+| PATCH   | `/api/applications/:id/withdraw`    | Retrait côté candidat                    |
+| GET/PUT | `/api/account/profile`              | Lire/modifier le profil                  |
+| GET     | `/api/account/notifications`        | Notifications en application             |
+| GET     | `/api/applications/stats`           | Statistiques recruteur                   |
+| GET     | `/api/account/candidate-dashboard`  | Statistiques candidat                    |
+| GET     | `/api/openapi.json`                 | Spécification OpenAPI                    |
+| POST    | `/api/auth/refresh`                 | Renouveler le JWT                        |
+| POST    | `/api/auth/change-password`         | Changer le mot de passe                  |
+| POST    | `/api/auth/deactivate`              | Désactiver son compte                    |
 | DELETE  | `/api/applications/:id`             | Supprimer une candidature                |
 
 Comptes de démonstration : `candidat@recrute.test` et

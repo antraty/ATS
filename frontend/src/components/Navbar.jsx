@@ -19,6 +19,7 @@ export default function Navbar() {
             {user?.role === "candidate" && <li>
               <NavLink to="/mes-candidatures" className={({ isActive }) => (isActive ? "active" : "")}>Mes candidatures</NavLink>
             </li>}
+            {user?.role === "candidate" && <li><NavLink to="/offres-sauvegardees" className={({ isActive }) => (isActive ? "active" : "")}>Favoris</NavLink></li>}
             {!user && <li>
               <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>Offres</NavLink>
             </li>}
@@ -44,6 +45,8 @@ export default function Navbar() {
                 Suivi des candidatures
               </NavLink>
             </li>}
+            {user && <li><NavLink to="/notifications" className={({ isActive }) => (isActive ? "active" : "")}>Notifications</NavLink></li>}
+            {user && <li><NavLink to="/profil" className={({ isActive }) => (isActive ? "active" : "")}>Mon profil</NavLink></li>}
           </ul>
         </nav>
       </div>

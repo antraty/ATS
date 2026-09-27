@@ -11,6 +11,9 @@ export default function JobRow({ job }) {
 
   return (
     <Link to={`/offres/${job.id}`} className="job-row">
+      <span className="company-mark" aria-hidden="true">
+        {job.company_logo ? <img src={job.company_logo} alt="" /> : job.company?.slice(0, 1).toUpperCase()}
+      </span>
       <div className="job-row-main">
         <h3>{job.title}</h3>
         <div className="meta">

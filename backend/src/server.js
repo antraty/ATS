@@ -1,10 +1,3 @@
-// server.js
-// ------------------------------------------------------------------
-// Point d'entrée de l'API. Ce fichier :
-//   1. Configure Express (middlewares globaux)
-//   2. Branche les routes
-//   3. Démarre le serveur HTTP
-// ------------------------------------------------------------------
 
 const express = require("express");
 const cors = require("cors");
@@ -12,6 +5,7 @@ const cors = require("cors");
 const jobsRoutes = require("./routes/jobs.routes");
 const applicationsRoutes = require("./routes/applications.routes");
 const authRoutes = require("./routes/auth.routes");
+const accountRoutes = require("./routes/account.routes");
 const { VALID_STATUSES } = require("./controllers/applications.controller");
 
 const app = express();
@@ -37,10 +31,30 @@ app.get("/api/statuses", (req, res) => {
   res.json(VALID_STATUSES);
 });
 
+app.get("/api/openapi.json", (req, res) => {
+  res.json({
+    openapi: "3.0.3",
+    info: { title: "Recrute ATS API", version: "1.0.0", description: "API de recrutement avec authentification Bearer, offres, candidatures et profils." },
+    servers: [{ url: "http://localhost:4000/api" }],
+    components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } } },
+    paths: {
+      "/jobs": { get: { summary: "Rechercher les offres publiées", parameters: ["search", "city", "region", "contract", "sector", "salary_min", "salary_max", "experience", "remote", "sort", "order", "page", "limit"].map((name) => ({ name, in: "query", schema: { type: "string" } })) }, post: { summary: "Créer une offre", security: [{ bearerAuth: [] }] } },
+      "/jobs/{id}": { get: { summary: "Consulter une offre" }, put: { summary: "Modifier une offre", security: [{ bearerAuth: [] }] }, delete: { summary: "Supprimer une offre", security: [{ bearerAuth: [] }] } },
+      "/jobs/{id}/applications": { post: { summary: "Postuler à une offre", security: [{ bearerAuth: [] }] }, get: { summary: "Lister les candidatures de l’offre", security: [{ bearerAuth: [] }] } },
+      "/applications": { get: { summary: "Filtrer les candidatures recruteur", security: [{ bearerAuth: [] }] } },
+      "/applications/{id}/status": { patch: { summary: "Changer le statut et enregistrer l’historique", security: [{ bearerAuth: [] }] } },
+      "/applications/{id}/history": { get: { summary: "Consulter l’historique", security: [{ bearerAuth: [] }] } },
+      "/account/profile": { get: { summary: "Consulter le profil", security: [{ bearerAuth: [] }] }, put: { summary: "Modifier le profil", security: [{ bearerAuth: [] }] } },
+      "/account/notifications": { get: { summary: "Lister les notifications", security: [{ bearerAuth: [] }] } },
+    },
+  });
+});
+
 // --- Routes principales de l'application ---
 app.use("/api/jobs", jobsRoutes);
 app.use("/api/applications", applicationsRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/account", accountRoutes);
 
 // --- Gestion des routes inconnues (404) ---
 app.use((req, res) => {

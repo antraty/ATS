@@ -55,12 +55,117 @@ db.exec(`
     candidate_email   TEXT NOT NULL,
     candidate_id      INTEGER,
     cover_letter      TEXT,
+    cv_url            TEXT,
+    internal_note     TEXT,
     status            TEXT NOT NULL DEFAULT 'recue',
                       -- valeurs possibles : recue | en_cours | acceptee | refusee
     created_at        TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS candidate_profiles (
+    user_id INTEGER PRIMARY KEY,
+    first_name TEXT,
+    last_name TEXT,
+    phone TEXT,
+    photo_url TEXT,
+    address TEXT,
+    birth_date TEXT,
+    target_role TEXT,
+    education_level TEXT,
+    experience_years REAL DEFAULT 0,
+    availability TEXT,
+    salary_expectation TEXT,
+    skills_json TEXT NOT NULL DEFAULT '[]',
+    education_json TEXT NOT NULL DEFAULT '[]',
+    experience_json TEXT NOT NULL DEFAULT '[]',
+    cv_url TEXT,
+    cover_letter_url TEXT,
+    portfolio_url TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS recruiter_profiles (
+    user_id INTEGER PRIMARY KEY,
+    company_name TEXT,
+    logo_url TEXT,
+    sector TEXT,
+    description TEXT,
+    address TEXT,
+    phone TEXT,
+    website TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS application_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    application_id INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    comment TEXT,
+    changed_by INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    message TEXT NOT NULL,
+    link TEXT,
+    read_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS saved_jobs (
+    user_id INTEGER NOT NULL,
+    job_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, job_id),
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+  );
 `);
+
+function ensureColumns(table, columns) {
+  const existing = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name));
+  for (const [name, definition] of Object.entries(columns)) {
+    if (!existing.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+  }
+}
+
+ensureColumns("jobs", {
+  missions: "TEXT DEFAULT ''",
+  min_experience: "REAL DEFAULT 0",
+  required_degree: "TEXT DEFAULT ''",
+  education_level: "TEXT DEFAULT ''",
+  openings: "INTEGER DEFAULT 1",
+  deadline: "TEXT",
+  status: "TEXT NOT NULL DEFAULT 'published'",
+  city: "TEXT DEFAULT ''",
+  region: "TEXT DEFAULT ''",
+  remote: "INTEGER NOT NULL DEFAULT 0",
+  salary_min: "REAL",
+  salary_max: "REAL",
+  sector: "TEXT DEFAULT ''",
+  updated_at: "TEXT",
+});
+ensureColumns("applications", { cv_url: "TEXT", internal_note: "TEXT" });
+ensureColumns("users", { is_active: "INTEGER NOT NULL DEFAULT 1", updated_at: "TEXT" });
+ensureColumns("candidate_profiles", { photo_url: "TEXT" });
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_jobs_status_created ON jobs(status, created_at);
+  CREATE INDEX IF NOT EXISTS idx_jobs_contract_location ON jobs(contract, city, region);
+  CREATE INDEX IF NOT EXISTS idx_applications_candidate ON applications(candidate_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status, created_at);
+  CREATE INDEX IF NOT EXISTS idx_application_history_application ON application_history(application_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_saved_jobs_user ON saved_jobs(user_id, created_at);
+`);
+
+const existingApplications = db.prepare("SELECT id, status FROM applications WHERE id NOT IN (SELECT application_id FROM application_history)").all();
+const seedHistory = db.prepare("INSERT INTO application_history (application_id, status, comment) VALUES (?, ?, ?)");
+for (const application of existingApplications) {
+  seedHistory.run(application.id, application.status, "Candidature importée dans le suivi ATS.");
+}
 
 // Compatible avec une base créée par la première version.
 const jobColumns = db.prepare("PRAGMA table_info(jobs)").all().map((column) => column.name);
@@ -103,6 +208,7 @@ insertDemoUser.run({
 });
 
 const demoRecruiter = db.prepare("SELECT id FROM users WHERE email = ?").get("recruteur@recrute.test");
+db.prepare("UPDATE jobs SET recruiter_id = ? WHERE recruiter_id IS NULL").run(demoRecruiter.id);
 const jobCount = db.prepare("SELECT COUNT(*) AS n FROM jobs").get().n;
 
 if (jobCount === 0) {

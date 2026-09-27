@@ -5,6 +5,10 @@ import {
   deleteJob,
   applyToJob,
   fetchApplicationsForJob,
+  fetchProfile,
+  saveJob,
+  updateJobStatus,
+  duplicateJob,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -22,10 +26,12 @@ export default function JobDetailPage() {
     candidate_name: "",
     candidate_email: "",
     cover_letter: "",
+    cv_url: "",
   });
   const [applyError, setApplyError] = useState("");
   const [applySuccess, setApplySuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   function loadData() {
     setLoading(true);
@@ -41,6 +47,11 @@ export default function JobDetailPage() {
 
   useEffect(loadData, [id, user?.role]);
 
+  useEffect(() => {
+    if (user?.role !== "candidate") return;
+    fetchProfile().then((profile) => setForm((current) => ({ ...current, cv_url: profile.cv_url || "" }))).catch(() => {});
+  }, [user?.role]);
+
   async function handleApply(e) {
     e.preventDefault();
     setApplyError("");
@@ -48,7 +59,7 @@ export default function JobDetailPage() {
     setSubmitting(true);
     try {
       await applyToJob(id, form);
-      setForm({ candidate_name: "", candidate_email: "", cover_letter: "" });
+      setForm({ candidate_name: "", candidate_email: "", cover_letter: "", cv_url: "" });
       setApplySuccess(true);
       loadData(); // rafraîchit la liste des candidatures affichée à droite
     } catch (err) {
@@ -62,6 +73,23 @@ export default function JobDetailPage() {
     if (!window.confirm("Supprimer définitivement cette offre et ses candidatures ?")) return;
     await deleteJob(id);
     navigate("/");
+  }
+
+  async function handleJobAction(action) {
+    try {
+      if (action === "duplicate") {
+        const copy = await duplicateJob(id);
+        navigate(`/offres/${copy.id}/modifier`);
+      } else {
+        const updated = await updateJobStatus(id, action);
+        setJob(updated);
+      }
+    } catch (err) { setError(err.message); }
+  }
+
+  async function handleSaveJob() {
+    try { await saveJob(id); setSaved(true); }
+    catch (err) { setError(err.message); }
   }
 
   if (loading) return <div className="page loading">Chargement...</div>;
@@ -78,11 +106,24 @@ export default function JobDetailPage() {
           {job.company} — {job.location} — {job.contract}
           {job.salary ? ` — ${job.salary}` : ""}
         </div>
+        <div className="job-facts">
+          {job.deadline && <span>Date limite : {new Date(job.deadline).toLocaleDateString("fr-FR")}</span>}
+          {job.min_experience > 0 && <span>{job.min_experience} an(s) d’expérience minimum</span>}
+          {job.education_level && <span>{job.education_level}</span>}
+          {job.openings > 1 && <span>{job.openings} postes</span>}
+          {job.remote ? <span>Télétravail possible</span> : null}
+          {job.applications_count !== undefined && <span>{job.applications_count} candidature(s)</span>}
+        </div>
 
         <div className="job-actions">
+          {user?.role === "candidate" && <button className="btn btn-ghost" onClick={handleSaveJob}>{saved ? "Offre sauvegardée" : "Sauvegarder l’offre"}</button>}
           {user?.role === "recruiter" && <Link to={`/offres/${job.id}/modifier`} className="btn btn-ghost">
             Modifier l'offre
           </Link>}
+          {user?.role === "recruiter" && job.status !== "published" && <button className="btn btn-primary" onClick={() => handleJobAction("publish")}>Publier</button>}
+          {user?.role === "recruiter" && job.status === "published" && <button className="btn btn-ghost" onClick={() => handleJobAction("unpublish")}>Dépublier</button>}
+          {user?.role === "recruiter" && <button className="btn btn-ghost" onClick={() => handleJobAction("duplicate")}>Dupliquer</button>}
+          {user?.role === "recruiter" && job.status !== "archived" && <button className="btn btn-ghost" onClick={() => handleJobAction("archive")}>Archiver</button>}
           {user?.role === "recruiter" && <button className="btn btn-danger" onClick={handleDelete}>
             Supprimer
           </button>}
@@ -92,6 +133,7 @@ export default function JobDetailPage() {
       <div className="job-detail-body">
         <div>
           <p className="description">{job.description}</p>
+          {job.missions && <><h2 className="section-heading">Missions</h2><p className="description">{job.missions}</p></>}
 
           {skills.length > 0 && (
             <div className="skill-tags">
@@ -123,6 +165,10 @@ export default function JobDetailPage() {
               <div className="form-field">
                 <label htmlFor="candidate_email">Email</label>
                 <input id="candidate_email" type="email" value={user.email} readOnly />
+              </div>
+              <div className="form-field">
+                <label htmlFor="cv_url">Lien vers votre CV</label>
+                <input id="cv_url" type="url" value={form.cv_url} onChange={(e) => setForm({ ...form, cv_url: e.target.value })} />
               </div>
               <div className="form-field">
                 <label htmlFor="cover_letter">Message de motivation</label>

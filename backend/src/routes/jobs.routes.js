@@ -7,13 +7,17 @@ const router = express.Router();
 
 const jobsController = require("../controllers/jobs.controller");
 const applicationsController = require("../controllers/applications.controller");
-const { authenticate, requireRole } = require("../auth");
+const { authenticate, optionalAuthenticate, requireRole } = require("../auth");
 
 router.get("/", jobsController.listJobs); // GET /api/jobs (+ recherche ?q=...)
-router.get("/:id", jobsController.getJob); // GET /api/jobs/:id
+router.get("/:id", optionalAuthenticate, jobsController.getJob); // GET /api/jobs/:id
 router.post("/", authenticate, requireRole("recruiter"), jobsController.createJob); // POST /api/jobs
 router.put("/:id", authenticate, requireRole("recruiter"), jobsController.updateJob); // PUT /api/jobs/:id
 router.delete("/:id", authenticate, requireRole("recruiter"), jobsController.deleteJob); // DELETE /api/jobs/:id
+router.post("/:id/duplicate", authenticate, requireRole("recruiter"), jobsController.duplicateJob);
+router.patch("/:id/publish", authenticate, requireRole("recruiter"), jobsController.publishJob);
+router.patch("/:id/unpublish", authenticate, requireRole("recruiter"), jobsController.unpublishJob);
+router.patch("/:id/archive", authenticate, requireRole("recruiter"), jobsController.archiveJob);
 
 // Candidatures rattachées à une offre précise
 router.get("/:jobId/applications", authenticate, requireRole("recruiter"), applicationsController.listApplicationsForJob);

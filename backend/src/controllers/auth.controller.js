@@ -7,7 +7,7 @@ function publicUser(user) {
 function login(req, res) {
   const { email, password } = req.body;
   const user = db.prepare("SELECT * FROM users WHERE email = ?").get(String(email || "").trim());
-  if (!user || !verifyPassword(String(password || ""), user.password_hash)) {
+  if (!user || !user.is_active || !verifyPassword(String(password || ""), user.password_hash)) {
     return res.status(401).json({ error: "Email ou mot de passe incorrect." });
   }
   res.json({ token: createToken(user), user: publicUser(user) });
@@ -36,4 +36,31 @@ function me(req, res) {
   res.json(req.user);
 }
 
-module.exports = { login, register, me };
+function refresh(req, res) {
+  const user = db.prepare("SELECT * FROM users WHERE id = ? AND is_active = 1").get(req.user.id);
+  if (!user) return res.status(401).json({ error: "Compte désactivé." });
+  res.json({ token: createToken(user), user: publicUser(user) });
+}
+
+function changePassword(req, res) {
+  const { current_password, new_password } = req.body;
+  const user = db.prepare("SELECT * FROM users WHERE id = ? AND is_active = 1").get(req.user.id);
+  if (!user || !verifyPassword(String(current_password || ""), user.password_hash)) {
+    return res.status(401).json({ error: "Mot de passe actuel incorrect." });
+  }
+  if (typeof new_password !== "string" || new_password.length < 8) {
+    return res.status(400).json({ error: "Le nouveau mot de passe doit contenir au moins 8 caractères." });
+  }
+  db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(hashPassword(new_password), user.id);
+  res.json({ success: true });
+}
+
+function deactivate(req, res) {
+  const result = db.prepare("UPDATE users SET is_active = 0, updated_at = datetime('now') WHERE id = ?")
+    .run(req.user.id);
+  if (!result.changes) return res.status(404).json({ error: "Compte introuvable." });
+  res.json({ success: true });
+}
+
+module.exports = { login, register, me, refresh, changePassword, deactivate };

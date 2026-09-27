@@ -15,21 +15,30 @@ function verifyPassword(password, storedHash) {
 }
 
 function createToken(user) {
-  const payload = Buffer.from(JSON.stringify({ id: user.id, role: user.role, exp: Date.now() + 1000 * 60 * 60 * 24 * 7 })).toString("base64url");
-  const signature = crypto.createHmac("sha256", SECRET).update(payload).digest("base64url");
-  return `${payload}.${signature}`;
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ id: user.id, role: user.role, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 })).toString("base64url");
+  const input = `${header}.${payload}`;
+  const signature = crypto.createHmac("sha256", SECRET).update(input).digest("base64url");
+  return `${input}.${signature}`;
 }
 
 function getUserFromToken(token) {
   if (!token) return null;
-  const [payload, signature] = token.split(".");
-  if (!payload || !signature) return null;
-  const expected = crypto.createHmac("sha256", SECRET).update(payload).digest("base64url");
+  const parts = token.split(".");
+  const legacy = parts.length === 2;
+  const [first, second, third] = parts;
+  if (!first || (legacy ? !second : !third)) return null;
+  const input = legacy ? first : `${first}.${second}`;
+  const signature = legacy ? second : third;
+  const expected = crypto.createHmac("sha256", SECRET).update(input).digest("base64url");
   if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
   try {
+    const payload = legacy ? first : second;
     const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-    if (!data.id || data.exp < Date.now()) return null;
-    return db.prepare("SELECT id, name, email, role, company FROM users WHERE id = ?").get(data.id) || null;
+    const expired = legacy ? data.exp < Date.now() : data.exp < Math.floor(Date.now() / 1000);
+    if (!data.id || expired) return null;
+    const user = db.prepare("SELECT id, name, email, role, company, is_active FROM users WHERE id = ?").get(data.id);
+    return user?.is_active ? user : null;
   } catch {
     return null;
   }
@@ -43,6 +52,12 @@ function authenticate(req, res, next) {
   next();
 }
 
+function optionalAuthenticate(req, res, next) {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  req.user = getUserFromToken(token);
+  next();
+}
+
 function requireRole(role) {
   return (req, res, next) => {
     if (req.user?.role !== role) return res.status(403).json({ error: "Accès réservé à ce profil." });
@@ -50,4 +65,4 @@ function requireRole(role) {
   };
 }
 
-module.exports = { db, hashPassword, verifyPassword, createToken, authenticate, requireRole };
+module.exports = { db, hashPassword, verifyPassword, createToken, authenticate, optionalAuthenticate, requireRole };
