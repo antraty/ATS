@@ -116,4 +116,14 @@ Comptes de démonstration : `candidat@recrute.test` et
 
 
 
+-----------------------------
+Développé par:
+ANTRATIA
+AMBININTSOA Antonio
+ANDRIANASOA Minonantenaina Enzo
+RAJAONAH Tendrilalaina Herimino
+
+
+
+
 
